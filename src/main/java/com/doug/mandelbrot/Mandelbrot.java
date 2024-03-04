@@ -1,12 +1,15 @@
 package com.doug.mandelbrot;
 
-import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class Mandelbrot {
     public static Mandelbrot instance;
-    private int width;
-    private int height;
+    private final int width;
+    private final  int height;
     private Double xStart = Constants.X_START;
     private Double xEnd = Constants.X_END;
     private Double yStart = Constants.Y_START;
@@ -30,18 +33,28 @@ public class Mandelbrot {
 
     public BufferedImage calculate() {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        int width2 = width / 2;
+        int height2 = height / 2;
 
-        for (int i = 0; i < width; i++) {
-            Double x0 = xStart + ((double) i / (double) width) * (xEnd - xStart);
+        ArrayList<MandelbrotWorker> workers = new ArrayList<>();
 
-            for (int j = 0; j < height; j++) {
-                Double y0 = yStart + ((double) j / (double) height) * (yEnd - yStart);
+        workers.add(new MandelbrotWorker(0, width2, 0, height2,
+                xStart, xEnd, yStart, yEnd, maxIter, width, height, image));
+        workers.add(new MandelbrotWorker(width2 + 1, width, 0, height2,
+                xStart, xEnd, yStart, yEnd, maxIter, width, height, image));
+        workers.add(new MandelbrotWorker(0, width2, height2 + 1, height,
+                xStart, xEnd, yStart, yEnd, maxIter, width, height, image));
+        workers.add(new MandelbrotWorker(width2 + 1, width, height2 + 1, height,
+                xStart, xEnd, yStart, yEnd, maxIter, width, height, image));
 
-                float r = computeMandelbrot(x0, y0);
-
-                Color color = computeColor(r);
-                image.setRGB(i, j, color.getRGB());
+        try (ExecutorService es = Executors.newCachedThreadPool()) {
+            for (MandelbrotWorker worker : workers) {
+                es.execute(worker);
             }
+            es.shutdown();
+            es.awaitTermination(1, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
         return image;
@@ -85,37 +98,5 @@ public class Mandelbrot {
 
     public void setYEnd(Double yEnd) {
         this.yEnd = yEnd;
-    }
-
-    private float computeMandelbrot(Double x0, Double y0) {
-        float iter = 0;
-
-        Double x = 0.0;
-        Double y = 0.0;
-
-        Double x2 = 0.0;
-        Double y2 = 0.0;
-
-        while ((x2 + y2 <= 4) && iter < maxIter) {
-            y = (2 * x * y) + y0;
-            x = (x2 - y2) + x0;
-            x2 = x * x;
-            y2 = y * y;
-            iter++;
-        }
-
-        return iter;
-    }
-
-    private Color computeColor(float iter) {
-        Color color;
-
-        if (iter == maxIter) {
-            color = Color.black;
-        }  else {
-            color = Color.getHSBColor(iter / maxIter, 1, 1);
-        }
-
-        return color;
     }
 }
